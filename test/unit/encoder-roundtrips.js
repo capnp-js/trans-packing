@@ -1,20 +1,21 @@
 /* @flow */
 
-const Prando = require("prando");
-const spawn = require("child_process").spawn;
+import Prando from "prando";
+import { spawn } from "child_process";
+import { describe, it } from "mocha";
 
-const lib = require("../");
+import transEncodeSync from "../../src/encode/transEncodeSync";
 
 const unpacked = new Uint8Array(8 * 4096);
-const packed = new Uint8Array(8 * 4096 + 64);//TODO: Why can't `+32` work here? (8*4096 * 2/2048 = 32)
+const packed = new Uint8Array(8 * 4096 + 64);
 
-function source(packed, random) {
+function source(random) {
   let cut = 0;
   return {
     next() {
-      if (cut < packed.length) {
-        const bytes = Math.min(packed.length - cut, random.nextInt(0, 2048));
-        const value = packed.subarray(cut, cut + bytes);
+      if (cut < unpacked.length) {
+        const bytes = Math.min(unpacked.length - cut, 8*random.nextInt(0, 256));
+        const value = unpacked.subarray(cut, cut + bytes);
         cut += bytes;
         return {
           done: false,
@@ -65,33 +66,53 @@ function decoderRoundTrip(seed) {
   unpacked[6] = 0x00;
   unpacked[7] = 0x00;
 
-  /* Check that my implementation understands packed data from the reference
+  const expectedS = Buffer.from(unpacked).toString("hex");
+
+  /* Check that the reference implementation understands packed data from my
      implementation. It doesn' matter if we pack identically. */
   //TODO: Consider testing that they pack identically. I coded it expecting
   //      identical output, so why not check it?
-  const capnp = spawn("capnp", ["convert", "--quiet", "flat:flat-packed"]);
+  const capnp = spawn("capnp", ["convert", "--quiet", "flat-packed:flat"]);
 
+  /*
+  const capnp_exp = spawn("capnp", ["convert", "--quiet", "flat:flat-packed"]);
+  capnp_exp.stdin.write(Buffer.from(unpacked));
+  capnp_exp.stdin.end();
+  let packed_exp = "";
+  capnp_exp.stdout.on("data", data => {
+    packed_exp += data.toString("hex");
+  });
+  capnp_exp.on("close", () => {
+    const fs = require("fs");
+    fs.writeFileSync("expected.txt", packed_exp);
+  });
+  */
+  
   let err = "";
   capnp.stderr.on("data", data => {
     err += data.toString();
   });
 
-  let end = 0;
+  let flat = "";
   capnp.stdout.on("data", data => {
-    packed.set(data, end);
-    end += data.length;
+    flat += data.toString("hex");
   });
 
-  let cut = 0;
+  //TODO: Parametrize the buffer length to lengths other than 2048. Decoder too.
+  const encode = transEncodeSync(new Uint8Array(2048));
+  const trans = encode(source(random));
+
+//  let column = 0;
   function write() {
-    let subarray;
+    let t = trans.next();
     let ok = true;
-    do {
-      subarray = unpacked.subarray(cut, cut + Math.min(2048, unpacked.length - cut));
-      cut += subarray.length
-      ok = capnp.stdin.write(Buffer.from(subarray));
-    } while (subarray.length !== 0 && ok);
-    if (subarray.length === 0) {
+    while (!t.done && ok) {
+//      column += t.value.length * 2;
+//      console.log("\nCOLUMN: "+column);
+      ok = capnp.stdin.write(Buffer.from(t.value));
+      t = trans.next();
+    }
+    if (t.done) {
       capnp.stdin.end();
     } else {
       capnp.stdin.once("drain", write);
@@ -102,21 +123,10 @@ function decoderRoundTrip(seed) {
   return new Promise((resolve, reject) => {
     capnp.on("close", code => {
       if (code) {
-        reject(`Bad exit, code=${code}, seed=${seed}.`);
+        reject(`Bad exit, code=${code}, seed=${seed}, stderr: ${err}`);
       } else {
-        const expectedS = Buffer.from(unpacked).toString("hex");
-        const decode = lib.transDecodeSync(new Uint8Array(2048));
-        const trans = decode(source(packed.subarray(0, end), random));
-        let flat = "";
-        //let column = 0;
-        for (let t=trans.next(); !t.done; t=trans.next()) {
-          //column += t.value.length * 2;
-          //console.log("COLUMN: "+column);
-          flat += Buffer.from(t.value).toString("hex");
-        }
-
         if (flat !== expectedS) {
-          reject(`Failed for seed=${seed}\n` + `Raw:\n${expectedS}\n` + `Round Trip:\n${flat}`);
+          reject(`Failed for seed=${seed}\n` + `stderr: ${err}\n` + `Raw:\n${expectedS}\n` + `Round Trip:\n${flat}`);
         } else {
           resolve("Passed for seed="+seed);
         }
@@ -125,8 +135,15 @@ function decoderRoundTrip(seed) {
   });
 }
 
-const random = new Prando(874742);
-let prior = decoderRoundTrip(8374)
-for (let i=0; i<500; ++i) {
-  prior = prior.then(() => decoderRoundTrip(random.nextInt(0, 65536)));
-}
+describe("transEncodeSync", function () {
+  const random = new Prando(874742);
+  let prior = decoderRoundTrip(8374);
+  for (let i=0; i<500; ++i) {
+    it(`decodes random data i=${i}`, function (done) {
+      prior = prior.then(() => {
+        done();
+        return decoderRoundTrip(random.nextInt(0, 65536));
+      }, done);
+    });
+  }
+});
