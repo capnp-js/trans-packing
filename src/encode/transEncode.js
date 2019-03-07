@@ -1,14 +1,10 @@
 /* @flow */
 
+import type { BytesR, BytesB } from "@capnp-js/bytes";
 import type {
   Source,
   AsyncIteratorTransform,
 } from "@capnp-js/transform";
-
-import type {
-  UnpackedBuffer,
-  PackedBuffer,
-} from "../common";
 
 import { PULL_STREAM_BROKE_PROTOCOL } from "@capnp-js/transform";
 
@@ -20,8 +16,8 @@ import { EMPTY } from "../common";
    Proto packed data. Since the user supplies the buffer used by `asynchronous`,
    the user could use the same buffer all over the place for many purposes.
    Don't do that unless you've got a really good reason. */
-export default function transEncode(buffer: Uint8Array): AsyncIteratorTransform<UnpackedBuffer, PackedBuffer> {
-  return function transform(source: Source<UnpackedBuffer>): Source<PackedBuffer> {
+export default function transEncode(buffer: BytesB): AsyncIteratorTransform<BytesR, BytesR> {
+  return function transform(source: Source<BytesR>): Source<BytesR> {
     const status: {|
       doned: null | Error,
       done: null | (true | Error),
@@ -32,7 +28,7 @@ export default function transEncode(buffer: Uint8Array): AsyncIteratorTransform<
 
     const core = new TransformCore(buffer);
 
-    return function encoded(abort: null | true, put: (null | (true | Error), PackedBuffer) => void): void {
+    return function encoded(abort: null | true, put: (null | (true | Error), BytesR) => void): void {
       if (status.doned) {
         put(status.doned, EMPTY);
         return;

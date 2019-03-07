@@ -1,12 +1,11 @@
 /* @flow */
 
+import type { BytesR, BytesB } from "@capnp-js/bytes";
 import type {
   SugarlessIterator,
   SugarlessIteratorResult,
   IteratorTransform,
 } from "@capnp-js/transform";
-
-import type { UnpackedBuffer, PackedBuffer } from "../common";
 
 import { EMPTY } from "../common";
 
@@ -14,8 +13,8 @@ import TransformCore from "./TransformCore";
 
 /* Transform iterator for synchronously processing Cap'n Proto packed data into
    word aligned data. */
-export default function transDecodeSync(buffer: Uint8Array): IteratorTransform<PackedBuffer, UnpackedBuffer> {
-  return function transform(source: SugarlessIterator<PackedBuffer>): SugarlessIterator<UnpackedBuffer> {
+export default function transDecodeSync(buffer: BytesB): IteratorTransform<BytesR, BytesR> {
+  return function transform(source: SugarlessIterator<BytesR>): SugarlessIterator<BytesR> {
     const status: {|
       doned: null | Error,
       done: null | (true | Error),
@@ -27,7 +26,7 @@ export default function transDecodeSync(buffer: Uint8Array): IteratorTransform<P
     const core = new TransformCore(buffer);
 
     return {
-      next(): SugarlessIteratorResult<UnpackedBuffer> {
+      next(): SugarlessIteratorResult<BytesR> {
         if (status.doned) {
           return { done: status.doned };
         }

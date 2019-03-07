@@ -1,8 +1,10 @@
 /* @flow */
 
-import type { Cursor } from "../../common";
+import type { CursorR, CursorB } from "../../common";
 
 import type { State, VerbatimRange } from "./main";
+
+import { getSubarray, setSubarray, get, set } from "@capnp-js/bytes";
 
 import { ZERO, VERBATIM } from "../../common";
 
@@ -13,25 +15,25 @@ import { debugState } from "./main";
 import { START_STATE, START, ZERO_RANGE, VERBATIM_RANGE } from "./main";
 
 /* Given 10 packed bytes, efficiently output a bunch of unpacked words. */
-export default function writeFastPathBytes(state: State, packed: Cursor, unpacked: Cursor): State {
+export default function writeFastPathBytes(state: State, packed: CursorR, unpacked: CursorB): State {
   let nextState = state;
   switch (state.type) {
   case START: {
-    const tag = packed.buffer[packed.i++];
+    const tag = get(packed.i++, packed.buffer);
 
     /* Pick the nonzero bytes from the `packed` buffer and fill zeros as needed.
     */
-    unpacked.buffer[unpacked.i++] = 0x01 & tag ? packed.buffer[packed.i++] : 0x00; // 1
-    unpacked.buffer[unpacked.i++] = 0x02 & tag ? packed.buffer[packed.i++] : 0x00; // 2
-    unpacked.buffer[unpacked.i++] = 0x04 & tag ? packed.buffer[packed.i++] : 0x00; // 3
-    unpacked.buffer[unpacked.i++] = 0x08 & tag ? packed.buffer[packed.i++] : 0x00; // 4
-    unpacked.buffer[unpacked.i++] = 0x10 & tag ? packed.buffer[packed.i++] : 0x00; // 5
-    unpacked.buffer[unpacked.i++] = 0x20 & tag ? packed.buffer[packed.i++] : 0x00; // 6
-    unpacked.buffer[unpacked.i++] = 0x40 & tag ? packed.buffer[packed.i++] : 0x00; // 7
-    unpacked.buffer[unpacked.i++] = 0x80 & tag ? packed.buffer[packed.i++] : 0x00; // 8
+    set(0x01 & tag ? get(packed.i++, packed.buffer) : 0x00, unpacked.i++, unpacked.buffer); // 1
+    set(0x02 & tag ? get(packed.i++, packed.buffer) : 0x00, unpacked.i++, unpacked.buffer); // 2
+    set(0x04 & tag ? get(packed.i++, packed.buffer) : 0x00, unpacked.i++, unpacked.buffer); // 3
+    set(0x08 & tag ? get(packed.i++, packed.buffer) : 0x00, unpacked.i++, unpacked.buffer); // 4
+    set(0x10 & tag ? get(packed.i++, packed.buffer) : 0x00, unpacked.i++, unpacked.buffer); // 5
+    set(0x20 & tag ? get(packed.i++, packed.buffer) : 0x00, unpacked.i++, unpacked.buffer); // 6
+    set(0x40 & tag ? get(packed.i++, packed.buffer) : 0x00, unpacked.i++, unpacked.buffer); // 7
+    set(0x80 & tag ? get(packed.i++, packed.buffer) : 0x00, unpacked.i++, unpacked.buffer); // 8
 
     if (tag === ZERO) {
-      const byteCountdown = packed.buffer[packed.i++] << 3;
+      const byteCountdown = get(packed.i++, packed.buffer) << 3;
       if (byteCountdown > 0) {
         /* TODO: I introduced `nextState` because I expect a higher likelihood
            of inlining if my function has one exit point. Revert to the prettier
@@ -45,7 +47,7 @@ export default function writeFastPathBytes(state: State, packed: Cursor, unpacke
         // #endif
       } /* Otherwise `nextState` remains START_STATE. */
     } else if (tag === VERBATIM) {
-      const byteCountdown = packed.buffer[packed.i++] << 3;
+      const byteCountdown = get(packed.i++, packed.buffer) << 3;
       if (byteCountdown > 0) {
         nextState = {
           type: VERBATIM_RANGE,
@@ -72,18 +74,20 @@ export default function writeFastPathBytes(state: State, packed: Cursor, unpacke
     if (byteCountdown <= remainingBytes) {
       if (byteCountdown <= availableBytes) {
         /* Everything fits. I get to continue with my fast path. */
-        unpacked.buffer.set(
-          packed.buffer.subarray(packed.i, packed.i + byteCountdown),
+        setSubarray(
+          getSubarray(packed.i, packed.i + byteCountdown, packed.buffer),
           unpacked.i,
+          unpacked.buffer,
         );
         packed.i += byteCountdown;
         unpacked.i += byteCountdown;
         nextState = START_STATE;
       } else {
         /* I ran out of space on the `unpacked` buffer. */
-        unpacked.buffer.set(
-          packed.buffer.subarray(packed.i, packed.i + availableBytes),
+        setSubarray(
+          getSubarray(packed.i, packed.i + availableBytes, packed.buffer),
           unpacked.i,
+          unpacked.buffer,
         );
         packed.i += availableBytes;
         unpacked.i = unpacked.buffer.length;
@@ -105,9 +109,10 @@ export default function writeFastPathBytes(state: State, packed: Cursor, unpacke
            `remainingBytes` down to the nearest multiple of 8 to get end-of-
            word-aligned-bytes for the `packed` buffer. */
         const remainingWordBytes = remainingBytes - (remainingBytes % 8);
-        unpacked.buffer.set(
-          packed.buffer.subarray(packed.i, packed.i + remainingWordBytes),
+        setSubarray(
+          getSubarray(packed.i, packed.i + remainingWordBytes, packed.buffer),
           unpacked.i,
+          unpacked.buffer,
         );
         packed.i += remainingWordBytes;
         unpacked.i += remainingWordBytes;
@@ -119,9 +124,10 @@ export default function writeFastPathBytes(state: State, packed: Cursor, unpacke
         /* The `packed` buffer has more verbatim range bytes than the `unpacked`
            buffer can hold, so I write what I can to the `unpacked` buffer and
            leave the remaining `packed` bytes for later. */
-        unpacked.buffer.set(
-          packed.buffer.subarray(packed.i, packed.i + availableBytes),
+        setSubarray(
+          getSubarray(packed.i, packed.i + availableBytes, packed.buffer),
           unpacked.i,
+          unpacked.buffer,
         );
         packed.i += availableBytes;
         unpacked.i = unpacked.buffer.length;

@@ -84,6 +84,7 @@ function browserRollup() {
   return rollup({
     input: "browser/lib/index.js",
     external: [
+      "@capnp-js/bytes",
       "@capnp-js/transform",
     ],
   }).then(bundle => {
@@ -93,6 +94,7 @@ function browserRollup() {
       name: "capnpJsTransPacking",
       sourcemap: true,
       globals: {
+        "@capnp-js/bytes": "capnpJsBytes",
         "@capnp-js/transform": "capnpJsTransform",
       },
     });

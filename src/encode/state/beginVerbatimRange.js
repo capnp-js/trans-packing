@@ -1,8 +1,10 @@
 /* @flow */
 
-import type { Cursor } from "../../common";
+import type { CursorR, CursorB } from "../../common";
 
 import type { Start, VerbatimRangeWriting } from "./main";
+
+import { getSubarray, setSubarray, set } from "@capnp-js/bytes";
 
 import computeTag from "../computeTag";
 import peekWord from "../peekWord";
@@ -17,7 +19,7 @@ import { START_STATE, VERBATIM_RANGE_WRITING } from "./main";
    on the `packed` buffer. If, however, I don't find the verbatim range's end on
    the `unpacked` buffer, then I leave the cursors untouched and return `null`
    (indicating transition to VerbatimRangeInitializing continuation). */
-export default function beginVerbatimRange(unpacked: Cursor, packed: Cursor): Start | VerbatimRangeWriting | null {
+export default function beginVerbatimRange(unpacked: CursorR, packed: CursorB): Start | VerbatimRangeWriting | null {
   const begin = unpacked.i;
   let byteCount = 0;
 
@@ -41,12 +43,16 @@ export default function beginVerbatimRange(unpacked: Cursor, packed: Cursor): St
       byteCount += 8;
     } else {
       /* I found the verbatim range's end, so I can write the word count. */
-      packed.buffer[packed.i++] = byteCount >>> 3;
+      set(byteCount >>> 3, packed.i++, packed.buffer);
 
       const availableBytes = packed.buffer.length - packed.i;
       if (byteCount <= availableBytes) {
         /* The whole verbatim range fits into the `packed` buffer.  */
-        packed.buffer.set(unpacked.buffer.subarray(begin, unpacked.i), packed.i);
+        setSubarray(
+          getSubarray(begin, unpacked.i, unpacked.buffer),
+          packed.i,
+          packed.buffer,
+        );
         packed.i += byteCount;
         return START_STATE;
       } else {
@@ -54,9 +60,10 @@ export default function beginVerbatimRange(unpacked: Cursor, packed: Cursor): St
            I've got to transition to VerbatimRangeWriting to write on an
            additional iteration's `packed` buffer too. */
         const availableWordBytes = availableBytes - (availableBytes % 8);
-        packed.buffer.set(
-          unpacked.buffer.subarray(begin, begin + availableWordBytes),
+        setSubarray(
+          getSubarray(begin, begin + availableWordBytes, unpacked.buffer),
           packed.i,
+          packed.buffer,
         );
         unpacked.i = begin + availableWordBytes;
         packed.i += availableWordBytes;

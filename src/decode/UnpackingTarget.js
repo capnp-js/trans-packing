@@ -1,6 +1,8 @@
 /* @flow */
 
-import type { UnpackedBuffer } from "../common";
+import type { BytesB } from "@capnp-js/bytes";
+
+import { getSubarray } from "@capnp-js/bytes";
 
 import {
   DECODE_MIN_BUFFER_SIZE,
@@ -12,10 +14,10 @@ import {
 type uint = number;
 
 export default class UnpackingTarget {
-  buffer: UnpackedBuffer;
+  buffer: BytesB;
   i: uint;
 
-  constructor(buffer: UnpackedBuffer) {
+  constructor(buffer: BytesB) {
     if (buffer.length < DECODE_MIN_BUFFER_SIZE) {
       throw new Error(DECODE_BUFFER_SIZE_ERROR);
     }
@@ -38,8 +40,8 @@ export default class UnpackingTarget {
   }
 
   /* Reclaim any unused buffer. */
-  finish(): Uint8Array {
-    const tail = this.buffer.subarray(this.i);
+  finish(): BytesB {
+    const tail = getSubarray(this.i, this.buffer.length, this.buffer);
     this.i = this.buffer.length;
 
     return tail;

@@ -1,13 +1,16 @@
 /* @flow */
 
+import type { BytesR, BytesB } from "@capnp-js/bytes";
 import type { SugarlessIteratorResult } from "@capnp-js/transform";
 
-import type { Cursor, PackedBuffer, UnpackedBuffer } from "../common";
+import type { CursorR, CursorB } from "../common";
 
 import type { State } from "./state/main";
 
+import { getSubarray } from "@capnp-js/bytes";
+
 // #if _DEBUG
-import { debugUnpacked, debugPacked } from "../common";
+import { debugPacked, debugUnpacked } from "../common";
 import { debugState } from "./state/main";
 // #endif
 import { EMPTY } from "../common";
@@ -33,12 +36,12 @@ import { START_STATE } from "./state/main";
    remaining packed bytes have been processed or (2) `set`ting another
    chunk of packed bytes for processing. */
 export default class TransformCore {
-  +buffer: UnpackedBuffer;
-  +packed: Cursor;
+  +buffer: BytesB;
   +remainder: Remainder;
+  packed: CursorR;
   state: State;
 
-  constructor(buffer: Uint8Array) {
+  constructor(buffer: BytesB) {
     if (buffer.length < DECODE_MIN_BUFFER_SIZE) {
       throw new Error(DECODE_BUFFER_SIZE_ERROR);
     }
@@ -64,15 +67,17 @@ export default class TransformCore {
   /* Iterating `next` draws from this source of packed bytes. Once iteration
      returns null, users can reuse the `packed` buffer without corrupting the
      core instance's processing. */
-  set(packed: PackedBuffer): void {
-    this.packed.buffer = packed;
-    this.packed.i = 0;
+  set(packed: BytesR): void {
+    this.packed = {
+      buffer: packed,
+      i: 0,
+    };
   }
 
   /* Process as many convenient packed bytes into `this.buffer` as possible and
      return the resulting subarray as an iterator value. When all of the packed
      bytes have been exhausted, then return null. */
-  next(): UnpackedBuffer | null {
+  next(): BytesR | null {
     /* Iteration ends when the `packed` buffer has been exhausted. */
     if (this.packed.i === this.packed.buffer.length) {
       return null;
@@ -85,7 +90,7 @@ export default class TransformCore {
     /* I overwrite the prior iteration's unpacked data by taking the `unpacked`
        cursor's position as 0. Consumers should beware of iterating without
        first consuming (or cloning) the prior iteration's data. */
-    const unpacked = {
+    const unpacked: CursorB = {
       buffer: this.buffer,
       i: 0,
     };
@@ -105,7 +110,7 @@ export default class TransformCore {
         /* I've exhausted the packed buffer without synchronizing. The `packed`
            cursor has moved to the end so the following `next` call will early
            exit with null. */
-        return unpacked.buffer.subarray(0, unpacked.i);
+        return getSubarray(0, unpacked.i, unpacked.buffer);
       } else {
         /* I've found some word aligned output. */
         this.state = nextState;
@@ -155,13 +160,13 @@ export default class TransformCore {
       this.remainder.intern(this.packed);
     }
 
-    return unpacked.buffer.subarray(0, unpacked.i);
+    return getSubarray(0, unpacked.i, unpacked.buffer);
   }
 
   /* After `next` iteration completes, there may still exist remaining packed
      bytes that have been interned by `this.remainder`. Iterating `flush`
      processes these remaining bytes. */
-  flush(): SugarlessIteratorResult<UnpackedBuffer> {
+  flush(): SugarlessIteratorResult<BytesR> {
     // #if _DEBUG
     console.log("\n***** flush() beginning *****");
     // #endif
@@ -183,7 +188,7 @@ export default class TransformCore {
       if (unpacked.i === unpacked.buffer.length) {
         return {
           done: false,
-          value: unpacked.buffer.subarray(0, unpacked.i),
+          value: getSubarray(0, unpacked.i, unpacked.buffer),
         };
       }
     }
@@ -193,7 +198,7 @@ export default class TransformCore {
     } else {
       return {
         done: false,
-        value: unpacked.buffer.subarray(0, unpacked.i),
+        value: getSubarray(0, unpacked.i, unpacked.buffer),
       };
     }
   }

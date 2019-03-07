@@ -1,11 +1,10 @@
 /* @flow */
 
+import type { BytesR, BytesB } from "@capnp-js/bytes";
 import type {
   Source,
   AsyncIteratorTransform,
 } from "@capnp-js/transform";
-
-import type { UnpackedBuffer, PackedBuffer } from "../common";
 
 import { PULL_STREAM_BROKE_PROTOCOL } from "@capnp-js/transform";
 
@@ -17,8 +16,8 @@ import TransformCore from "./TransformCore";
    into word aligned data. Since the user supplies the buffer used by
    `asynchronous`, the user could use the same buffer all over the place for
    many purposes. Don't do that unless you've got a really good reason. */
-export default function transDecode(buffer: Uint8Array): AsyncIteratorTransform<PackedBuffer, UnpackedBuffer> {
-  return function transform(source: Source<PackedBuffer>): Source<UnpackedBuffer> {
+export default function transDecode(buffer: BytesB): AsyncIteratorTransform<BytesR, BytesR> {
+  return function transform(source: Source<BytesR>): Source<BytesR> {
     const status: {|
       doned: null | Error,
       done: null | (true | Error),
@@ -29,7 +28,7 @@ export default function transDecode(buffer: Uint8Array): AsyncIteratorTransform<
 
     const core = new TransformCore(buffer);
 
-    return function decoded(abort: null | true, put: (null | (true | Error), UnpackedBuffer) => void): void {
+    return function decoded(abort: null | true, put: (null | (true | Error), BytesR) => void): void {
       if (status.doned) {
         put(status.doned, EMPTY);
         return;

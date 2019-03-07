@@ -1,8 +1,10 @@
 /* @flow */
 
-import type { Cursor } from "../../common";
+import type { CursorR, CursorB } from "../../common";
 
 import type { State, Start, VerbatimRange } from "./main";
+
+import { get, set } from "@capnp-js/bytes";
 
 import { ZERO, VERBATIM } from "../../common";
 
@@ -15,13 +17,13 @@ import {
 
 /* Unpack as many words as efficiently possible. This function cannot perform as
    well as the fast path, but it has weaker preconditions. */
-export default function writeSlowWord(state: Start | VerbatimRange, packed: Cursor, unpacked: Cursor): State {
+export default function writeSlowWord(state: Start | VerbatimRange, packed: CursorR, unpacked: CursorB): State {
   switch (state.type) {
   case START: {
-    const tag = packed.buffer[packed.i++];
+    const tag = get(packed.i++, packed.buffer);
 
     for (let mask=0x01; mask<=0x80; mask<<=1) {
-      unpacked.buffer[unpacked.i++] = (tag & mask) ? packed.buffer[packed.i++] : 0x00;
+      set((tag & mask) ? get(packed.i++, packed.buffer) : 0x00, unpacked.i++, unpacked.buffer);
     }
 
     if (tag === ZERO) {
@@ -29,14 +31,14 @@ export default function writeSlowWord(state: Start | VerbatimRange, packed: Curs
          the word count embedded in the packed buffer. */
       return {
         type: ZERO_RANGE,
-        byteCountdown: packed.buffer[packed.i++] << 3,
+        byteCountdown: get(packed.i++, packed.buffer) << 3,
       };
     } else if (tag === VERBATIM) {
       /* I've found a VERBATIM tag, so I compute the verbatim range's byte count
          from the word count embedded in the packed buffer. */
       return {
         type: VERBATIM_RANGE,
-        byteCountdown: packed.buffer[packed.i++] << 3,
+        byteCountdown: get(packed.i++, packed.buffer) << 3,
       };
     } else {
       return START_STATE;
@@ -47,14 +49,14 @@ export default function writeSlowWord(state: Start | VerbatimRange, packed: Curs
 
     /* I was already in a verbatim range. Write a single, verbatim word into the
        `unpacked` buffer. */
-    unpacked.buffer[unpacked.i++] = packed.buffer[packed.i++]; // 1
-    unpacked.buffer[unpacked.i++] = packed.buffer[packed.i++]; // 2
-    unpacked.buffer[unpacked.i++] = packed.buffer[packed.i++]; // 3
-    unpacked.buffer[unpacked.i++] = packed.buffer[packed.i++]; // 4
-    unpacked.buffer[unpacked.i++] = packed.buffer[packed.i++]; // 5
-    unpacked.buffer[unpacked.i++] = packed.buffer[packed.i++]; // 6
-    unpacked.buffer[unpacked.i++] = packed.buffer[packed.i++]; // 7
-    unpacked.buffer[unpacked.i++] = packed.buffer[packed.i++]; // 8
+    set(get(packed.i++, packed.buffer), unpacked.i++, unpacked.buffer); // 1
+    set(get(packed.i++, packed.buffer), unpacked.i++, unpacked.buffer); // 2
+    set(get(packed.i++, packed.buffer), unpacked.i++, unpacked.buffer); // 3
+    set(get(packed.i++, packed.buffer), unpacked.i++, unpacked.buffer); // 4
+    set(get(packed.i++, packed.buffer), unpacked.i++, unpacked.buffer); // 5
+    set(get(packed.i++, packed.buffer), unpacked.i++, unpacked.buffer); // 6
+    set(get(packed.i++, packed.buffer), unpacked.i++, unpacked.buffer); // 7
+    set(get(packed.i++, packed.buffer), unpacked.i++, unpacked.buffer); // 8
 
     const byteCountdown = state.byteCountdown - 8;
 

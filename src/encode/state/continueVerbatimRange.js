@@ -1,7 +1,9 @@
 /* @flow */
 
-import type { Cursor } from "../../common";
+import type { CursorR, CursorB } from "../../common";
 import type { VerbatimRangeContinuing } from "./continuation";
+
+import { getSubarray, setSubarray, set } from "@capnp-js/bytes";
 
 import computeTag from "../computeTag";
 import peekWord from "../peekWord";
@@ -11,7 +13,7 @@ import { VERBATIM_RANGE_CONTINUING } from "./continuation";
 /* Continue searching for the verbatim range's end. I return null if I've found
    it, and I return another VerbatimRangeContinuing state if I still haven't
    found the verbatim range's end. */
-export default function continueVerbatimRange(unpacked: Cursor, packed: Cursor): null | VerbatimRangeContinuing {
+export default function continueVerbatimRange(unpacked: CursorR, packed: CursorB): null | VerbatimRangeContinuing {
   /* `unpacked.i` should initially be 0, but I couldn't express the constraint
      with static typing, so I pretend that the caller may have input an
      `unpacked` cursor with `i !== 0`. */
@@ -39,15 +41,23 @@ export default function continueVerbatimRange(unpacked: Cursor, packed: Cursor):
       byteCount += 8;
     } else {
       /* I've found the verbatim range's end, so I can write its word count. */
-      packed.buffer[0] = byteCount >>> 3;
+      set(byteCount >>> 3, 0, packed.buffer);
 
-      packed.buffer.set(unpacked.buffer.subarray(begin, unpacked.i), packed.i);
+      setSubarray(
+        getSubarray(begin, unpacked.i, unpacked.buffer),
+        packed.i,
+        packed.buffer,
+      );
       packed.i += unpacked.i - begin;
       return null;
     }
   }
 
-  packed.buffer.set(unpacked.buffer.subarray(begin), packed.i);
+  setSubarray(
+    getSubarray(begin, unpacked.buffer.length, unpacked.buffer),
+    packed.i,
+    packed.buffer,
+  );
   packed.i += unpacked.buffer.length - begin;
 
   return {

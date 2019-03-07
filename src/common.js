@@ -1,19 +1,15 @@
 /* @flow */
 
-export type UnpackedBuffer = Uint8Array;
-export type PackedBuffer = Uint8Array;
+import type { BytesR, BytesB } from "@capnp-js/bytes";
 
-type u8 = number;
+import { create } from "@capnp-js/bytes";
+
 type uint = number;
+type u8 = number;
 
 export type Word = [ u8, u8, u8, u8,   u8, u8, u8, u8 ];
-export type Cursor = {
-  buffer: Uint8Array,
-  i: uint,
-  ...,
-};
 
-export const EMPTY = new Uint8Array(0);
+export const EMPTY = create(0);
 export const ZERO = 0x00;
 export const VERBATIM = 0xff;
 
@@ -29,12 +25,24 @@ export const bitCount = new Uint8Array([
   3,4,4,5, 4,5,5,6,   4,5,5,6, 5,6,6,7,   4,5,5,6, 5,6,6,7,   5,6,6,7, 6,7,7,8, // eslint-disable-line comma-spacing
 ]);
 
+export type CursorR = {
+  +buffer: BytesR,
+  i: uint,
+  ...,
+};
+
+export type CursorB = {
+  +buffer: BytesB,
+  i: uint,
+  ...,
+};
+
 // #if _DEBUG
-export function debugPacked(packed: Cursor): string {
+export function debugPacked(packed: CursorR): string {
   return `${packed.i} of ${packed.buffer.length} packed`;
 }
 
-export function debugUnpacked(unpacked: Cursor): string {
+export function debugUnpacked(unpacked: CursorR): string {
   return `${unpacked.i} of ${unpacked.buffer.length} unpacked`;
 }
 // #endif

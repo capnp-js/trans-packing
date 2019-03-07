@@ -1,17 +1,19 @@
 /* @flow */
 
-import type { Cursor } from "../../common";
+import type { CursorR, CursorB } from "../../common";
 import type { Start, ZeroRangeWriting } from "./main";
+
+import { set } from "@capnp-js/bytes";
 
 import computeTag from "../computeTag";
 import peekWord from "../peekWord";
-
-type u8 = number;
 
 import {
   START_STATE,
   ZERO_RANGE_WRITING,
 } from "./main";
+
+type u8 = number;
 
 /* Starting from `wordCount`, advance the `unpacked` cursor until the zero range
    ends. If I exhaust the `unpacked` buffer without reaching the 0xff upper
@@ -19,7 +21,7 @@ import {
    buffer can continue searching for the final zero word in the zero range. If
    I find the final zero word, then I write the word count and return the Start
    state. */
-export default function writeZeroRange(byteCount: u8, unpacked: Cursor, packed: Cursor): ZeroRangeWriting | Start {
+export default function writeZeroRange(byteCount: u8, unpacked: CursorR, packed: CursorB): ZeroRangeWriting | Start {
   while (unpacked.i < unpacked.buffer.length) {
     const tag = computeTag(peekWord(unpacked));
 
@@ -34,7 +36,7 @@ export default function writeZeroRange(byteCount: u8, unpacked: Cursor, packed: 
       unpacked.i += 8;
       byteCount += 8;
     } else {
-      packed.buffer[packed.i++] = byteCount >>> 3;
+      set(byteCount >>> 3, packed.i++, packed.buffer);
       return START_STATE;
     }
   }

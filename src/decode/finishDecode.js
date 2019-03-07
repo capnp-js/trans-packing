@@ -1,8 +1,7 @@
 /* @flow */
 
+import type { BytesR, BytesB } from "@capnp-js/bytes";
 import type { Source, Sink } from "@capnp-js/transform";
-
-import type { PackedBuffer, UnpackedBuffer } from "../common";
 
 import type UnpackingTarget from "./UnpackingTarget";
 
@@ -10,9 +9,9 @@ import { EMPTY } from "../common";
 
 import FinishCore from "./FinishCore";
 
-export default function finishDecode(target: UnpackingTarget, cb: (null | Error, UnpackedBuffer) => void): Sink<PackedBuffer> {
+export default function finishDecode(target: UnpackingTarget, cb: (null | Error, BytesB) => void): Sink<BytesR> {
   const core = new FinishCore(target);
-  return function sink(source: Source<PackedBuffer>): void {
+  return function sink(source: Source<BytesR>): void {
     source(null, function next(done, value) {
       if (done === null) {
         const setted = core.set(value);
@@ -29,7 +28,7 @@ export default function finishDecode(target: UnpackingTarget, cb: (null | Error,
           if (finished instanceof Error) {
             cb(finished, EMPTY);
           } else {
-            (finished: UnpackedBuffer);
+            (finished: BytesB);
             cb(null, finished);
           }
         } else {

@@ -1,12 +1,9 @@
 /* @flow */
 
+import type { BytesR, BytesB } from "@capnp-js/bytes";
 import type { SugarlessIteratorResult } from "@capnp-js/transform";
 
-import type {
-  Cursor,
-  UnpackedBuffer,
-  PackedBuffer,
-} from "../common";
+import type { CursorR, CursorB } from "../common";
 
 import type { State, VerbatimRangeWriting } from "./state/main";
 import type {
@@ -14,12 +11,11 @@ import type {
   VerbatimRangeContinuing,
 } from "./state/continuation";
 
+import { getSubarray, setSubarray, set } from "@capnp-js/bytes";
+
 import { EMPTY, ZERO, VERBATIM } from "../common";
 // #if _DEBUG
-import {
-  debugPacked,
-  debugUnpacked,
-} from "../common";
+import { debugPacked, debugUnpacked } from "../common";
 // #endif
 
 import computeTag from "./computeTag";
@@ -49,12 +45,12 @@ import {
 } from "./state/continuation";
 
 export default class TransformCore {
-  +buffer: PackedBuffer;
-  +unpacked: Cursor;
+  +buffer: BytesB;
+  unpacked: CursorR;
   continuation: null | Continuation;
   state: State;
 
-  constructor(buffer: Uint8Array) {
+  constructor(buffer: BytesB) {
     /* The buffer must have at least 2048 bytes. Because each iteration clobbers
        the last iteration's data, I demand 2048 bytes so that I can efficiently
        handle verbatim ranges (technically I only need 2041 bytes, but 2048 is
@@ -75,17 +71,19 @@ export default class TransformCore {
     this.state = START_STATE;
   }
 
-  set(unpacked: UnpackedBuffer): void {
-    this.unpacked.buffer = unpacked;
-    this.unpacked.i = 0;
+  set(unpacked: BytesR): void {
+    this.unpacked = {
+      buffer: unpacked,
+      i: 0,
+    };
   }
 
-  next(): PackedBuffer | null {
+  next(): BytesR | null {
     // #if _DEBUG
     console.log("\n***** next() beginning *****");
     // #endif
 
-    const packed = {
+    const packed: CursorB = {
       buffer: this.buffer,
       i: 0,
     };
@@ -107,9 +105,9 @@ export default class TransformCore {
         }
         // #endif
 
-        const verbatim = this.unpacked.buffer.subarray(this.unpacked.i);
+        const verbatim = getSubarray(this.unpacked.i, this.unpacked.buffer.length, this.unpacked.buffer);
         this.unpacked.i = this.unpacked.buffer.length;
-        this.buffer.set(verbatim, 1);
+        setSubarray(verbatim, 1, this.buffer);
         this.continuation = {
           type: VERBATIM_RANGE_CONTINUING,
           end: 1 + verbatim.length,
@@ -157,7 +155,7 @@ export default class TransformCore {
       // #endif
 
       if (packed.buffer.length - packed.i < 10) {
-        const value = packed.buffer.subarray(0, packed.i);
+        const value = getSubarray(0, packed.i, packed.buffer);
         packed.i = 0;
         return value;
       }
@@ -167,16 +165,16 @@ export default class TransformCore {
         const word = readWord(this.unpacked);
         const tag = computeTag(word);
 
-        packed.buffer[packed.i++] = tag;
+        set(tag, packed.i++, packed.buffer);
 
-        if (word[0] !== 0x00) packed.buffer[packed.i++] = word[0];
-        if (word[1] !== 0x00) packed.buffer[packed.i++] = word[1];
-        if (word[2] !== 0x00) packed.buffer[packed.i++] = word[2];
-        if (word[3] !== 0x00) packed.buffer[packed.i++] = word[3];
-        if (word[4] !== 0x00) packed.buffer[packed.i++] = word[4];
-        if (word[5] !== 0x00) packed.buffer[packed.i++] = word[5];
-        if (word[6] !== 0x00) packed.buffer[packed.i++] = word[6];
-        if (word[7] !== 0x00) packed.buffer[packed.i++] = word[7];
+        if (word[0] !== 0x00) set(word[0], packed.i++, packed.buffer);
+        if (word[1] !== 0x00) set(word[1], packed.i++, packed.buffer);
+        if (word[2] !== 0x00) set(word[2], packed.i++, packed.buffer);
+        if (word[3] !== 0x00) set(word[3], packed.i++, packed.buffer);
+        if (word[4] !== 0x00) set(word[4], packed.i++, packed.buffer);
+        if (word[5] !== 0x00) set(word[5], packed.i++, packed.buffer);
+        if (word[6] !== 0x00) set(word[6], packed.i++, packed.buffer);
+        if (word[7] !== 0x00) set(word[7], packed.i++, packed.buffer);
 
         if (tag === ZERO) {
           this.state = writeZeroRange(0, this.unpacked, packed);
@@ -216,7 +214,7 @@ export default class TransformCore {
 
             /* The current `this.state === START_STATE` will be correct when the
                continuation exits. */
-            return packed.buffer.subarray(0, packed.i);
+            return getSubarray(0, packed.i, packed.buffer);
           }
         }
 
@@ -238,9 +236,10 @@ export default class TransformCore {
         const availableBytes = packed.buffer.length - packed.i;
         if (bytes <= availableBytes) {
           const end = this.unpacked.i + bytes;
-          packed.buffer.set(
-            this.unpacked.buffer.subarray(this.unpacked.i, end),
+          setSubarray(
+            getSubarray(this.unpacked.i, end, this.unpacked.buffer),
             packed.i,
+            packed.buffer,
           );
           this.unpacked.i = end;
           packed.i += bytes;
@@ -248,9 +247,10 @@ export default class TransformCore {
         } else {
           const availableWordBytes = availableBytes - (availableBytes % 8);
           const end = this.unpacked.i + availableWordBytes;
-          packed.buffer.set(
-            this.unpacked.buffer.subarray(this.unpacked.i, end),
+          setSubarray(
+            getSubarray(this.unpacked.i, end, this.unpacked.buffer),
             packed.i,
+            packed.buffer,
           );
           this.unpacked.i = end;
           packed.i += availableWordBytes;
@@ -259,7 +259,7 @@ export default class TransformCore {
             byteCountdown: bytes - availableWordBytes,
           };
 
-          return packed.buffer.subarray(0, packed.i);
+          return getSubarray(0, packed.i, packed.buffer);
         }
       }
       }
@@ -275,13 +275,13 @@ export default class TransformCore {
     // #endif
 
     if (packed.i !== 0) {
-      return packed.buffer.subarray(0, packed.i);
+      return getSubarray(0, packed.i, packed.buffer);
     } else {
       return null;
     }
   }
 
-  flush(): SugarlessIteratorResult<PackedBuffer> {
+  flush(): SugarlessIteratorResult<BytesR> {
     // #if _DEBUG
     console.log("\n***** flush() beginning *****");
     // #endif
@@ -308,8 +308,12 @@ export default class TransformCore {
         }
         // #endif
 
-        this.buffer[0] = byteCount >>> 3;
-        this.buffer.set(this.unpacked.buffer.subarray(this.unpacked.i), 1);
+        set(byteCount >>> 3, 0, this.buffer);
+        setSubarray(
+          getSubarray(this.unpacked.i, this.unpacked.buffer.length, this.unpacked.buffer),
+          1,
+          this.buffer,
+        );
         this.unpacked.i = this.unpacked.buffer.length;
         this.continuation = null;
 
@@ -318,7 +322,7 @@ export default class TransformCore {
 
         return {
           done: false,
-          value: this.buffer.subarray(0, byteCount + 1),
+          value: getSubarray(0, byteCount + 1, this.buffer),
         };
       } else {
         (this.continuation: VerbatimRangeContinuing);
@@ -337,7 +341,7 @@ export default class TransformCore {
         }
         // #endif
 
-        this.buffer[0] = end >>> 3;
+        set(end >>> 3, 0, this.buffer);
         this.continuation = null;
 
         /* The `this.state === START_STATE` at continuation entry is the correct
@@ -345,7 +349,7 @@ export default class TransformCore {
 
         return {
           done: false,
-          value: this.buffer.subarray(0, end),
+          value: getSubarray(0, end, this.buffer),
         };
       }
     } else {
@@ -367,11 +371,11 @@ export default class TransformCore {
         /* The this.state.type === ZERO_RANGE_WRITING` case can return null if
            the `this.unpacked` cursor reached the end of its buffer without
            reaching the word count byte's overflow limit. */
-        this.buffer[0] = byteCount >>> 3;
+        set(byteCount >>> 3, 0, this.buffer);
         this.state = START_STATE;
         return {
           done: false,
-          value: this.buffer.subarray(0, 1),
+          value: getSubarray(0, 1, this.buffer),
         };
       } else {
         /* The `this.state === START_STATE` case can return null, but there's

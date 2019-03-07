@@ -3,11 +3,12 @@
 import Prando from "prando";
 import { spawn } from "child_process";
 import { describe, it } from "mocha";
+import { create, fill, getSubarray, set } from "@capnp-js/bytes";
 
 import transEncodeSync from "../../src/encode/transEncodeSync";
 
-const unpacked = new Uint8Array(8 * 4096);
-const packed = new Uint8Array(8 * 4096 + 64);
+const unpacked = create(8 * 4096);
+const packed = create(8 * 4096 + 64);
 
 function source(random) {
   let cut = 0;
@@ -15,7 +16,7 @@ function source(random) {
     next() {
       if (cut < unpacked.length) {
         const bytes = Math.min(unpacked.length - cut, 8*random.nextInt(0, 256));
-        const value = unpacked.subarray(cut, cut + bytes);
+        const value = getSubarray(cut, cut+ bytes, unpacked);
         cut += bytes;
         return {
           done: false,
@@ -29,12 +30,12 @@ function source(random) {
 };
 
 function decoderRoundTrip(seed) {
-  unpacked.fill(0);
+  fill(0, 0, unpacked.length, unpacked);
 
   const random = new Prando(seed);
   /* Start with random bytes. */
   for (let j=0; j<unpacked.length; ++j) {
-    unpacked[j] = random.nextInt(0, 256);
+    set(random.nextInt(0, 256), j, unpacked);
   }
 
   /* Sprinkle in some zero ranges. */
@@ -43,30 +44,30 @@ function decoderRoundTrip(seed) {
   const rangeCount = Math.floor(8*4096 / 400 * random.next());
   for (let j=0; j<rangeCount; ++j) {
     const start = random.nextInt(0, 8*4096 - 400);
-    unpacked.fill(0, start, start + random.nextInt(0, 400));
+    fill(0, start, start + random.nextInt(0, 400), unpacked);
   }
 
   /* Sprinkle in some (0x00, 0x00) pairs (to bust up verbatim ranges). */
   const pairCount = Math.floor(8*4096 / 500 * random.next());
   for (let j=0; j<pairCount; ++j) {
     const start = random.nextInt(0, 8*4096-2);
-    unpacked.fill(0, start, start + 2);
+    fill(0, start, start + 2, unpacked);
   }
 
   /* Set the root pointer to interpret the whole buffer as a struct with a giant
      data section. This should dodge the `capnp convert` bounds checking that
      blocks conversion when I've got garbage in the root pointer's position. */
-  unpacked[0] = 0x00;
-  unpacked[1] = 0x00;
-  unpacked[2] = 0x00;
-  unpacked[3] = 0x00;
+  set(0x00, 0, unpacked);
+  set(0x00, 1, unpacked);
+  set(0x00, 2, unpacked);
+  set(0x00, 3, unpacked);
 
-  unpacked[4] = 4095 & 0xff;
-  unpacked[5] = 4095 >>> 8;
-  unpacked[6] = 0x00;
-  unpacked[7] = 0x00;
+  set(4095 & 0xff, 4, unpacked);
+  set(4095 >>> 8, 5, unpacked);
+  set(0x00, 6, unpacked);
+  set(0x00, 7, unpacked);
 
-  const expectedS = Buffer.from(unpacked).toString("hex");
+  const expectedS = Buffer.from(((unpacked: any): Uint8Array)).toString("hex");
 
   /* Check that the reference implementation understands packed data from my
      implementation. It doesn' matter if we pack identically. */
@@ -76,7 +77,7 @@ function decoderRoundTrip(seed) {
 
   /*
   const capnp_exp = spawn("capnp", ["convert", "--quiet", "flat:flat-packed"]);
-  capnp_exp.stdin.write(Buffer.from(unpacked));
+  capnp_exp.stdin.write(Buffer.from(((unpacked: any): Uint8Array)));
   capnp_exp.stdin.end();
   let packed_exp = "";
   capnp_exp.stdout.on("data", data => {
@@ -99,7 +100,7 @@ function decoderRoundTrip(seed) {
   });
 
   //TODO: Parametrize the buffer length to lengths other than 2048. Decoder too.
-  const encode = transEncodeSync(new Uint8Array(2048));
+  const encode = transEncodeSync(create(2048));
   const trans = encode(source(random));
 
 //  let column = 0;
@@ -109,7 +110,7 @@ function decoderRoundTrip(seed) {
     while (!t.done && ok) {
 //      column += t.value.length * 2;
 //      console.log("\nCOLUMN: "+column);
-      ok = capnp.stdin.write(Buffer.from(t.value));
+      ok = capnp.stdin.write(Buffer.from(((t.value: any): Uint8Array)));
       t = trans.next();
     }
     if (t.done) {

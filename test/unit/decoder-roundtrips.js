@@ -3,11 +3,12 @@
 import Prando from "prando";
 import { spawn } from "child_process";
 import { describe, it } from "mocha";
+import { create, fill, getSubarray, setSubarray, set } from "@capnp-js/bytes";
 
 import transDecodeSync from "../../src/decode/transDecodeSync";
 
-const unpacked = new Uint8Array(8 * 4096);
-const packed = new Uint8Array(8 * 4096 + 64);//TODO: Why can't `+32` work here? (8*4096 * 2/2048 = 32)
+const unpacked = create(8 * 4096);
+const packed = create(8 * 4096 + 64);//TODO: Why can't `+32` work here? (8*4096 * 2/2048 = 32)
 
 function source(packed, random) {
   let cut = 0;
@@ -15,7 +16,7 @@ function source(packed, random) {
     next() {
       if (cut < packed.length) {
         const bytes = Math.min(packed.length - cut, random.nextInt(0, 2048));
-        const value = packed.subarray(cut, cut + bytes);
+        const value = getSubarray(cut, cut + bytes, packed);
         cut += bytes;
         return {
           done: false,
@@ -29,12 +30,12 @@ function source(packed, random) {
 };
 
 function decoderRoundTrip(seed) {
-  unpacked.fill(0);
+  fill(0, 0, unpacked.length, unpacked);
 
   const random = new Prando(seed);
   /* Start with random bytes. */
   for (let j=0; j<unpacked.length; ++j) {
-    unpacked[j] = random.nextInt(0, 256);
+    set(random.nextInt(0, 256), j, unpacked);
   }
 
   /* Sprinkle in some zero ranges. */
@@ -43,28 +44,28 @@ function decoderRoundTrip(seed) {
   const rangeCount = Math.floor(8*4096 / 400 * random.next());
   for (let j=0; j<rangeCount; ++j) {
     const start = random.nextInt(0, 8*4096 - 400);
-    unpacked.fill(0, start, start + random.nextInt(0, 400));
+    fill(0, start, start + random.nextInt(0, 400), unpacked);
   }
 
   /* Sprinkle in some (0x00, 0x00) pairs (to bust up verbatim ranges). */
   const pairCount = Math.floor(8*4096 / 500 * random.next());
   for (let j=0; j<pairCount; ++j) {
     const start = random.nextInt(0, 8*4096-2);
-    unpacked.fill(0, start, start + 2);
+    fill(0, start, start + 2, unpacked);
   }
 
   /* Set the root pointer to interpret the whole buffer as a struct with a giant
      data section. This should dodge the `capnp convert` bounds checking that
      blocks conversion when I've got garbage in the root pointer's position. */
-  unpacked[0] = 0x00;
-  unpacked[1] = 0x00;
-  unpacked[2] = 0x00;
-  unpacked[3] = 0x00;
+  set(0x00, 0, unpacked);
+  set(0x00, 1, unpacked);
+  set(0x00, 2, unpacked);
+  set(0x00, 3, unpacked);
 
-  unpacked[4] = 4095 & 0xff;
-  unpacked[5] = 4095 >>> 8;
-  unpacked[6] = 0x00;
-  unpacked[7] = 0x00;
+  set(4095 & 0xff, 4, unpacked);
+  set(4095 >>> 8, 5, unpacked);
+  set(0x00, 6, unpacked);
+  set(0x00, 7, unpacked);
 
   /* Check that my implementation understands packed data from the reference
      implementation. It doesn' matter if we pack identically. */
@@ -79,7 +80,7 @@ function decoderRoundTrip(seed) {
 
   let end = 0;
   capnp.stdout.on("data", data => {
-    packed.set(data, end);
+    setSubarray(data, end, packed);
     end += data.length;
   });
 
@@ -88,9 +89,9 @@ function decoderRoundTrip(seed) {
     let subarray;
     let ok = true;
     do {
-      subarray = unpacked.subarray(cut, cut + Math.min(2048, unpacked.length - cut));
+      subarray = getSubarray(cut, cut + Math.min(2048, unpacked.length - cut), unpacked);
       cut += subarray.length
-      ok = capnp.stdin.write(Buffer.from(subarray));
+      ok = capnp.stdin.write(Buffer.from(((subarray: any): Uint8Array)));
     } while (subarray.length !== 0 && ok);
     if (subarray.length === 0) {
       capnp.stdin.end();
@@ -105,15 +106,15 @@ function decoderRoundTrip(seed) {
       if (code) {
         reject(`Bad exit, code=${code}, seed=${seed}.`);
       } else {
-        const expectedS = Buffer.from(unpacked).toString("hex");
-        const decode = transDecodeSync(new Uint8Array(2048));
-        const trans = decode(source(packed.subarray(0, end), random));
+        const expectedS = Buffer.from(((unpacked: any): Uint8Array)).toString("hex");
+        const decode = transDecodeSync(create(2048));
+        const trans = decode(source(getSubarray(0, end, packed), random));
         let flat = "";
         //let column = 0;
         for (let t=trans.next(); !t.done; t=trans.next()) {
           //column += t.value.length * 2;
           //console.log("COLUMN: "+column);
-          flat += Buffer.from(t.value).toString("hex");
+          flat += Buffer.from(((t.value: any): Uint8Array)).toString("hex");
         }
 
         if (flat !== expectedS) {

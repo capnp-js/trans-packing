@@ -1,18 +1,17 @@
 /* @flow */
 
-import type { PackedBuffer, UnpackedBuffer } from "../common";
+import type { BytesR, BytesB } from "@capnp-js/bytes";
 
 import type { State } from "./state/main";
 
-// #if _DEBUG
-import { debugPacked, debugUnpacked } from "../common";
-// #endif
+import { getSubarray } from "@capnp-js/bytes";
 
 import UnpackingTarget from "./UnpackingTarget";
 
 import Remainder from "./state/Remainder";
 import writeFastPathBytes from "./state/writeFastPathBytes";
 // #if _DEBUG
+import { debugPacked, debugUnpacked } from "../common";
 import { debugState } from "./state/main";
 // #endif
 import { START_STATE } from "./state/main";
@@ -33,7 +32,7 @@ export default class FinishCore {
 
   /* Packed buffers get consumed immediately. Consumers can immediately reuse
      the `packed` buffer after calling `set`. */
-  set(packed_: PackedBuffer): true | Error {
+  set(packed_: BytesR): true | Error {
     // #if _DEBUG
     console.log("\n***** set(packed) beginning *****");
     // #endif
@@ -112,7 +111,7 @@ export default class FinishCore {
   /* After I've `set` all of the packed bytes that I have to decode, `finish`
      processes any remainder to complete the decode. I truncate the
      `this.unpacked` buffer to remove any excess space that wasn't used. */
-  finish(): UnpackedBuffer | Error {
+  finish(): BytesB | Error {
     // #if _DEBUG
     console.log("\n***** finish() beginning *****");
     // #endif
@@ -134,6 +133,6 @@ export default class FinishCore {
       }
     }
 
-    return this.unpacked.buffer.subarray(0, this.unpacked.i);
+    return getSubarray(0, this.unpacked.i, this.unpacked.buffer);
   }
 }

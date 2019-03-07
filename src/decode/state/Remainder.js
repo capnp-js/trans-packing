@@ -1,7 +1,11 @@
 /* @flow */
 
-import type { Cursor, PackedBuffer } from "../../common";
+import type { BytesB } from "@capnp-js/bytes";
+
+import type { CursorR, CursorB } from "../../common";
 import type { State, Start, VerbatimRange } from "./main";
+
+import { create, get, set } from "@capnp-js/bytes";
 
 import syncBytes from "./syncBytes";
 import writeSlowWord from "./writeSlowWord";
@@ -26,23 +30,23 @@ type uint = number;
    advances the `packed` cursor to a position from which the fast path can
    resume processing. */
 export default class Remainder {
-  +buffer: PackedBuffer;
+  +buffer: BytesB;
   end: uint; // 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
 
   constructor() {
-    this.buffer = new Uint8Array(10);
+    this.buffer = create(10);
     this.end = 0;
   }
 
-  intern(packed: Cursor): void {
+  intern(packed: CursorR): void {
     // #if _DEBUG
     if (this.end !== 0) {
       throw new Error("Remainder's end should be 0 when interning a new remainder.");
     }
     // #endif
-    
+
     while (packed.i < packed.buffer.length) {
-      this.buffer[this.end++] = packed.buffer[packed.i++];
+      set(get(packed.i++, packed.buffer), this.end++, this.buffer);
     }
   }
 
@@ -50,7 +54,7 @@ export default class Remainder {
      remaining bytes may contain full words (from the Start state, for instance,
      0x00 followed by 0xff implies 256 words). The `tail` method writes these
      full words. */
-  tail(state: Start | VerbatimRange, unpacked: Cursor): State {
+  tail(state: Start | VerbatimRange, unpacked: CursorB): State {
     const p = {
       buffer: this.buffer,
       i: 0,
@@ -63,7 +67,7 @@ export default class Remainder {
 
     const offset = p.i;
     while (p.i < this.end) {
-      this.buffer[p.i - offset] = this.buffer[p.i];
+      set(get(p.i, this.buffer), p.i - offset, this.buffer);
       ++p.i;
     }
     this.end -= offset;
@@ -75,11 +79,11 @@ export default class Remainder {
      null if there aren't enough `packed` bytes to continue iterating. The
      `isSynced` method returns true when the remainder has been exhausted by
      `sync` calls. */
-  sync(state: State, packed: Cursor, unpacked: Cursor): State | null {
+  sync(state: State, packed: CursorR, unpacked: CursorB): State | null {
     if (state.type === ZERO_RANGE) {
       return writeZeroRange(state, unpacked);
     } else {
-      const syncLength = syncBytes(state, this.buffer[0]);
+      const syncLength = syncBytes(state, get(0, this.buffer));
       if (syncLength < this.end) {
         return this.tail(state, unpacked);
       } else {
@@ -93,7 +97,7 @@ export default class Remainder {
           while (this.end < syncLength) {
             /* Move bytes from the `packed` buffer to `this.buffer` so that
                `writeSlowWord` can read everything from a single buffer. */
-            this.buffer[this.end++] = packed.buffer[packed.i++];
+            set(get(packed.i++, packed.buffer), this.end++, this.buffer);
           }
 
           const p = {
@@ -109,7 +113,7 @@ export default class Remainder {
              `writeSlowWord` to process. I append them to my current buffer so
              that I can move the packed cursor to the buffer's end. */
           while(packed.i < packed.buffer.length) {
-            this.buffer[this.end++] = packed.buffer[packed.i++];
+            set(get(packed.i++, packed.buffer), this.end++, this.buffer);
           }
 
           return null;
@@ -127,7 +131,7 @@ export default class Remainder {
      longer `sync` the remainder with a next iteration's. I still need to
      process the remaining bytes, however. The `finish` method consumes these
      last packed bytes. */
-  flush(state: State, unpacked: Cursor): State | Error {
+  flush(state: State, unpacked: CursorB): State | Error {
     if (state.type === ZERO_RANGE) {
       // #if _DEBUG
       console.log("finishing a zero range");
@@ -135,7 +139,7 @@ export default class Remainder {
 
       return writeZeroRange(state, unpacked);
     } else if (this.end > 0) {
-      const syncLength = syncBytes(state, this.buffer[0]);
+      const syncLength = syncBytes(state, get(0, this.buffer));
       if (syncLength <= this.end) {
         // #if _DEBUG
         console.log(`[okay] ${debugState(state)}, [0, ${syncLength}) remainder bytes unpack to word aligned bytes`);

@@ -4,12 +4,13 @@ import type { ZeroRange } from "../../src/decode/state/main";
 
 import * as assert from "assert";
 import { describe, it } from "mocha";
+import { create, fill, get, set } from "@capnp-js/bytes";
 
 import writeZeroRange from "../../src/decode/state/writeZeroRange";
 import writeSlowWord from "../../src/decode/state/writeSlowWord";
 
-const unpacked = new Uint8Array(8 * 4096);
-const packed = new Uint8Array(8 * 4096 + 32);
+const unpacked = create(8 * 4096);
+const packed = create(8 * 4096 + 32);
 
 describe("writeZeroRange", function () {
   it("transitions to Start state when it completes its byte count", function () {
@@ -19,15 +20,15 @@ describe("writeZeroRange", function () {
     };
 
     const unpacked = {
-      buffer: new Uint8Array(24),
+      buffer: create(24),
       i: 0,
     };
-    unpacked.buffer.fill(0xff);
+    fill(0xff, 0, unpacked.buffer.length, unpacked.buffer);
 
     const nextState = writeZeroRange(state, unpacked);
 
     for (let i=0; i<24; ++i) {
-      assert.equal(unpacked.buffer[i], 0x00);
+      assert.equal(get(i, unpacked.buffer), 0x00);
     }
 
     assert.equal(nextState.type, "start");
@@ -42,10 +43,10 @@ describe("writeZeroRange", function () {
     };
 
     const unpacked = {
-      buffer: new Uint8Array(24),
+      buffer: create(24),
       i: 0,
     };
-    unpacked.buffer.fill(0xff);
+    fill(0xff, 0, unpacked.buffer.length, unpacked.buffer);
 
     const nextState = writeZeroRange(state, unpacked);
 
@@ -60,15 +61,15 @@ describe("writeZeroRange", function () {
     };
 
     const unpacked = {
-      buffer: new Uint8Array(24),
+      buffer: create(24),
       i: 0,
     };
-    unpacked.buffer.fill(0xff);
+    fill(0xff, 0, unpacked.buffer.length, unpacked.buffer);
 
     writeZeroRange(state, unpacked);
 
     for (let i=0; i<24; ++i) {
-      assert.equal(unpacked.buffer[i], 0x00);
+      assert.equal(get(i, unpacked.buffer), 0x00);
     }
 
     assert.equal(unpacked.i, 24);
@@ -83,23 +84,23 @@ describe("writeSlowWord", function () {
     };
 
     const packed = {
-      buffer: new Uint8Array(8),
+      buffer: create(8),
       i: 0,
     };
 
     const unpacked = {
-      buffer: new Uint8Array(8),
+      buffer: create(8),
       i: 0,
     };
 
     for (let i=0; i<8; ++i) {
-      packed.buffer[i] = i;
+      set(i, i, packed.buffer);
     }
 
     const nextState = writeSlowWord(state, packed, unpacked);
 
     for (let i=0; i<8; ++i) {
-      assert.equal(unpacked.buffer[i], i);
+      assert.equal(get(i, unpacked.buffer), i);
     }
 
     assert.equal(nextState.type, "start");
